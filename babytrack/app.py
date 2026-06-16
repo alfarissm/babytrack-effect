@@ -22,12 +22,31 @@ class App:
         self.original = None      # PIL.Image
         self.boxes = []
         self.preview = None       # ImageTk ref
+        self._fullscreen = False
 
         self._build_layout()
 
+        # window: maximized, resizable, F11 fullscreen, Esc exit
+        root.rowconfigure(0, weight=1)
+        root.columnconfigure(0, weight=1)
+        try:
+            root.state("zoomed")           # Windows: maximize
+        except tk.TclError:
+            root.attributes("-zoomed", True)  # Linux fallback
+        root.bind("<F11>", self._toggle_fullscreen)
+        root.bind("<Escape>", lambda e: self._set_fullscreen(False))
+        self.canvas.bind("<Configure>", lambda e: self.redraw())
+
+    def _toggle_fullscreen(self, _=None):
+        self._set_fullscreen(not self._fullscreen)
+
+    def _set_fullscreen(self, on):
+        self._fullscreen = on
+        self.root.attributes("-fullscreen", on)
+
     def _build_layout(self):
-        self.canvas = tk.Canvas(self.root, width=720, height=540, bg="#111")
-        self.canvas.grid(row=0, column=0, rowspan=24, padx=8, pady=8)
+        self.canvas = tk.Canvas(self.root, width=720, height=540, bg="#111", highlightthickness=0)
+        self.canvas.grid(row=0, column=0, rowspan=40, sticky="nsew", padx=8, pady=8)
 
         panel = ttk.Frame(self.root)
         panel.grid(row=0, column=1, sticky="n", padx=8, pady=8)
@@ -110,13 +129,23 @@ class App:
             self.redraw()
 
     def open_photo(self):
-        path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.webp" + _HEIC)])
+        filetypes = [
+            ("Images", "*.jpg *.jpeg *.png *.bmp *.webp" + _HEIC),
+            ("HEIC/HEIF", "*.heic *.heif"),
+            ("All files", "*.*"),
+        ]
+        path = filedialog.askopenfilename(filetypes=filetypes)
         if not path:
             return
         try:
-            self.original = Image.open(path).convert("RGB")
+            img = Image.open(path)
+            img.load()
+            self.original = img.convert("RGB")
         except Exception as ex:
-            messagebox.showwarning("Bad file", f"Not an image: {ex}")
+            hint = ""
+            if path.lower().endswith((".heic", ".heif")) and not _HEIC:
+                hint = "\n\npillow-heif not active. Run with the venv python:\n.venv\\Scripts\\python.exe main.py"
+            messagebox.showwarning("Cannot open", f"{type(ex).__name__}: {ex}{hint}")
             return
         self.detect()
 
@@ -137,12 +166,14 @@ class App:
     def redraw(self):
         if self.original is None:
             return
+        cw = max(1, self.canvas.winfo_width())
+        ch = max(1, self.canvas.winfo_height())
         composed = compose(self.original, self.boxes, self.opts)
         disp = composed.copy()
-        disp.thumbnail((720, 540))
+        disp.thumbnail((cw, ch))
         self.preview = ImageTk.PhotoImage(disp)
         self.canvas.delete("all")
-        self.canvas.create_image(360, 270, image=self.preview)
+        self.canvas.create_image(cw // 2, ch // 2, image=self.preview)
 
     def pick_color(self):
         c = colorchooser.askcolor(color=self.opts.color)
