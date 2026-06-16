@@ -2,6 +2,13 @@ import tkinter as tk
 from tkinter import ttk, filedialog, colorchooser, messagebox
 from PIL import Image, ImageTk
 
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()  # lets PIL open .heic / .heif (iPhone photos)
+    _HEIC = " *.heic *.heif"
+except ImportError:
+    _HEIC = ""
+
 from babytrack.options import Opts, ALL_STYLES, DETECTION_PARAMS
 from babytrack.blobs import detect_blobs
 from babytrack.compositor import compose
@@ -103,7 +110,7 @@ class App:
             self.redraw()
 
     def open_photo(self):
-        path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.webp")])
+        path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.webp" + _HEIC)])
         if not path:
             return
         try:
