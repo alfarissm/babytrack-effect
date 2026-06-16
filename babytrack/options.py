@@ -28,5 +28,8 @@ class Opts:
     label_pos: str = "top"           # center | top | bottom
     font_size: int = 14
     show_score: bool = True
+    # connection lines between blobs (drawn under the per-box style)
+    connect: bool = False
+    connect_mode: str = "hub"        # hub | nearest | mesh
 
 DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size"}

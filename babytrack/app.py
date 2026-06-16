@@ -57,6 +57,15 @@ class App:
         ttk.Checkbutton(panel, text="Show score", variable=self.score_var,
                         command=lambda: self._set("show_score", self.score_var.get())).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
 
+        self.connect_var = tk.BooleanVar(value=self.opts.connect)
+        ttk.Checkbutton(panel, text="Connect blobs", variable=self.connect_var,
+                        command=lambda: self._set("connect", self.connect_var.get())).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
+
+        ttk.Label(panel, text="Connect mode").grid(row=r, column=0, sticky="w")
+        self.conmode_var = tk.StringVar(value=self.opts.connect_mode)
+        cb5 = ttk.Combobox(panel, textvariable=self.conmode_var, values=["hub", "nearest", "mesh"], state="readonly", width=14)
+        cb5.grid(row=r, column=1, sticky="ew"); cb5.bind("<<ComboboxSelected>>", lambda e: self._set("connect_mode", self.conmode_var.get())); r += 1
+
         ttk.Label(panel, text="Color mode").grid(row=r, column=0, sticky="w")
         self.cmode_var = tk.StringVar(value=self.opts.color_mode)
         cb2 = ttk.Combobox(panel, textvariable=self.cmode_var, values=["single", "random", "by-label"], state="readonly", width=14)
