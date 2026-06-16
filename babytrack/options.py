@@ -31,5 +31,10 @@ class Opts:
     # connection lines between blobs (drawn under the per-box style)
     connect: bool = False
     connect_mode: str = "hub"        # hub | nearest | mesh
+    connect_curve: bool = False      # curved (bezier) instead of straight
+    # in-box region effect, applied under the outline style (independent of style)
+    region_fill: str = "none"        # see REGION_FX names in region_fx.py
 
 DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size"}
+
+REGION_FILLS = ["none", "gradient", "invert", "darken", "brighten", "tint", "pixelate", "scanline"]

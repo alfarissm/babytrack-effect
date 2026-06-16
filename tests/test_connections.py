@@ -32,6 +32,13 @@ def test_mesh_draws_more_than_hub():
     lit = lambda im: sum(1 for b in im.tobytes() if b)
     assert lit(mesh) > lit(hub)
 
+def test_curved_differs_from_straight():
+    straight = _blank()
+    curved = _blank()
+    draw_connections(straight, _boxes(), Opts(connect=True, connect_mode="hub", color="#ffffff", connect_curve=False))
+    draw_connections(curved, _boxes(), Opts(connect=True, connect_mode="hub", color="#ffffff", connect_curve=True))
+    assert straight.tobytes() != curved.tobytes()
+
 def test_fewer_than_two_boxes_no_crash():
     img = _blank()
     draw_connections(img, [Box(5, 5, 10, 10, "OBJ", 1.0)], Opts(connect=True, connect_mode="mesh"))

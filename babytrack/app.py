@@ -9,7 +9,7 @@ try:
 except ImportError:
     _HEIC = ""
 
-from babytrack.options import Opts, ALL_STYLES, DETECTION_PARAMS
+from babytrack.options import Opts, ALL_STYLES, DETECTION_PARAMS, REGION_FILLS
 from babytrack.blobs import detect_blobs
 from babytrack.compositor import compose
 from babytrack.export import save_png
@@ -91,6 +91,15 @@ class App:
         self.conmode_var = tk.StringVar(value=self.opts.connect_mode)
         cb5 = ttk.Combobox(panel, textvariable=self.conmode_var, values=["hub", "nearest", "mesh"], state="readonly", width=14)
         cb5.grid(row=r, column=1, sticky="ew"); cb5.bind("<<ComboboxSelected>>", lambda e: self._set("connect_mode", self.conmode_var.get())); r += 1
+
+        self.curve_var = tk.BooleanVar(value=self.opts.connect_curve)
+        ttk.Checkbutton(panel, text="Curved connect", variable=self.curve_var,
+                        command=lambda: self._set("connect_curve", self.curve_var.get())).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
+
+        ttk.Label(panel, text="Region fill").grid(row=r, column=0, sticky="w")
+        self.region_var = tk.StringVar(value=self.opts.region_fill)
+        cb6 = ttk.Combobox(panel, textvariable=self.region_var, values=REGION_FILLS, state="readonly", width=14)
+        cb6.grid(row=r, column=1, sticky="ew"); cb6.bind("<<ComboboxSelected>>", lambda e: self._set("region_fill", self.region_var.get())); r += 1
 
         ttk.Label(panel, text="Color mode").grid(row=r, column=0, sticky="w")
         self.cmode_var = tk.StringVar(value=self.opts.color_mode)
