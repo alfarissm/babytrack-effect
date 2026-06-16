@@ -9,7 +9,7 @@ A Python desktop app (Tkinter) that takes a **single static photo**, finds many 
 "blobs" (feature/contrast regions) in it, and overlays BabyTrack-style tracking HUD/filter
 graphics on each blob. The number of boxes is user-controlled (16–512), so the result has
 the signature BabyTrack "random-but-specific" scatter of tracking boxes. Styles and
-parameters are configurable through a settings panel mirroring artkit.cc/baby-track. The
+parameters are configurable through a settings panel. The
 composited image can be viewed on screen and saved as PNG.
 
 This is a visual experiment, not a product. No video, no camera, no MP4/WebM export, no
