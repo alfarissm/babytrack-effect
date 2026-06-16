@@ -9,7 +9,7 @@ try:
 except ImportError:
     _HEIC = ""
 
-from babytrack.options import Opts, ALL_STYLES, DETECTION_PARAMS, REGION_FILLS
+from babytrack.options import Opts, ALL_STYLES, DETECTION_PARAMS, REGION_FILLS, BOX_SHAPES
 from babytrack.blobs import detect_blobs
 from babytrack.compositor import compose
 from babytrack.export import save_png
@@ -72,6 +72,11 @@ class App:
         self.style_var = tk.StringVar(value=self.opts.style)
         cb = ttk.Combobox(panel, textvariable=self.style_var, values=ALL_STYLES, state="readonly", width=14)
         cb.grid(row=r, column=1, sticky="ew"); cb.bind("<<ComboboxSelected>>", lambda e: self._set("style", self.style_var.get())); r += 1
+
+        ttk.Label(panel, text="Box shape").grid(row=r, column=0, sticky="w")
+        self.shape_var = tk.StringVar(value=self.opts.box_shape)
+        cb7 = ttk.Combobox(panel, textvariable=self.shape_var, values=BOX_SHAPES, state="readonly", width=14)
+        cb7.grid(row=r, column=1, sticky="ew"); cb7.bind("<<ComboboxSelected>>", lambda e: self._set("box_shape", self.shape_var.get())); r += 1
 
         r = self._scale(panel, r, "Stroke (thickness)", "stroke", 1, 30)
         r = self._scale(panel, r, "Font size", "font_size", 10, 28)

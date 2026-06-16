@@ -20,6 +20,7 @@ class Opts:
     max_blob_pct: int = 50           # By Size: drop boxes wider/taller than this % of image
     # render params (changing these only re-composes)
     style: str = "Frame"
+    box_shape: str = "rect"          # rect | ellipse | diamond | hexagon | triangle | random
     stroke: int = 2
     same_size: bool = False          # False: keep detection box size. True: force bounding_size
     color_mode: str = "single"       # single | random | by-label
@@ -39,3 +40,5 @@ class Opts:
 DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size", "max_blob_pct"}
 
 REGION_FILLS = ["none", "gradient", "invert", "darken", "brighten", "tint", "pixelate", "scanline"]
+
+BOX_SHAPES = ["rect", "ellipse", "diamond", "hexagon", "triangle", "random"]

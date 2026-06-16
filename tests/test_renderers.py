@@ -33,10 +33,22 @@ def test_filter_changes_region_pixels():
     assert img.getpixel((80, 80)) != (10, 120, 200)
 
 import pytest
-from babytrack.options import ALL_STYLES
+from babytrack.options import ALL_STYLES, BOX_SHAPES
 
 @pytest.mark.parametrize("style", ALL_STYLES)
 def test_every_style_renders_without_crashing(style):
     img = Image.new("RGB", (200, 200), (60, 60, 60))
     apply_style(img, _box(), Opts(style=style))
+
+@pytest.mark.parametrize("shape", BOX_SHAPES)
+def test_every_box_shape_renders(shape):
+    img = _blank()
+    apply_style(img, _box(), Opts(style="Basic", box_shape=shape, color="#ffffff"))
+    assert img.getextrema() != ((0, 0), (0, 0), (0, 0))
+
+def test_ellipse_differs_from_rect():
+    rect = _blank(); ell = _blank()
+    apply_style(rect, _box(), Opts(style="Basic", box_shape="rect", color="#ffffff", stroke=2))
+    apply_style(ell, _box(), Opts(style="Basic", box_shape="ellipse", color="#ffffff", stroke=2))
+    assert rect.tobytes() != ell.tobytes()
 

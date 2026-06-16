@@ -21,6 +21,45 @@ def _font(size):
 def _effective_box(box: Box, opts: Opts) -> Box:
     return box.resized(opts.bounding_size) if opts.same_size else box
 
+_SHAPE_CHOICES = ["rect", "ellipse", "diamond", "hexagon", "triangle"]
+
+def _resolve_shape(opts: Opts, box: Box) -> str:
+    shape = getattr(opts, "box_shape", "rect")
+    if shape == "random":
+        # deterministic per box position so redraws stay stable
+        return _SHAPE_CHOICES[(box.x * 31 + box.y * 17 + box.w) % len(_SHAPE_CHOICES)]
+    return shape
+
+def _poly_points(box: Box, shape: str):
+    cx, cy = box.center
+    if shape == "diamond":
+        return [(cx, box.y), (box.x2, cy), (cx, box.y2), (box.x, cy)]
+    if shape == "triangle":
+        return [(cx, box.y), (box.x2, box.y2), (box.x, box.y2)]
+    if shape == "hexagon":
+        qx = box.w // 4
+        return [(box.x + qx, box.y), (box.x2 - qx, box.y), (box.x2, cy),
+                (box.x2 - qx, box.y2), (box.x + qx, box.y2), (box.x, cy)]
+    return [(box.x, box.y), (box.x2, box.y), (box.x2, box.y2), (box.x, box.y2)]
+
+def _shape_outline(draw, box: Box, opts: Opts, color, width):
+    shape = _resolve_shape(opts, box)
+    if shape == "rect":
+        draw.rectangle([box.x, box.y, box.x2, box.y2], outline=color, width=width)
+    elif shape == "ellipse":
+        draw.ellipse([box.x, box.y, box.x2, box.y2], outline=color, width=width)
+    else:
+        draw.polygon(_poly_points(box, shape), outline=color, width=width)
+
+def _shape_fill(draw, box: Box, opts: Opts, color):
+    shape = _resolve_shape(opts, box)
+    if shape == "rect":
+        draw.rectangle([box.x, box.y, box.x2, box.y2], fill=color)
+    elif shape == "ellipse":
+        draw.ellipse([box.x, box.y, box.x2, box.y2], fill=color)
+    else:
+        draw.polygon(_poly_points(box, shape), fill=color)
+
 def _label_text(box: Box, opts: Opts) -> str:
     if opts.label_mode == "custom":
         base = opts.label_custom
@@ -46,7 +85,7 @@ def _draw_label(draw, box: Box, opts: Opts, color):
 def _r_basic(img, box, opts):
     box = _effective_box(box, opts)
     c = resolve_color(opts, box.label)
-    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2], outline=c, width=opts.stroke)
+    _shape_outline(ImageDraw.Draw(img), box, opts, c, opts.stroke)
 
 @register("Frame")
 def _r_frame(img, box, opts):
@@ -102,7 +141,7 @@ def _r_grid(img, box, opts):
     box = _effective_box(box, opts)
     c = resolve_color(opts, box.label)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([box.x, box.y, box.x2, box.y2], outline=c, width=opts.stroke)
+    _shape_outline(draw, box, opts, c, opts.stroke)
     step = max(8, min(box.w, box.h) // 4)
     for gx in range(box.x + step, box.x2, step):
         draw.line([gx, box.y, gx, box.y2], fill=c, width=1)
@@ -149,7 +188,7 @@ def _r_win2k(img, box, opts):
     box = _effective_box(box, opts)
     c = resolve_color(opts, box.label)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([box.x, box.y, box.x2, box.y2], outline=c, width=opts.stroke)
+    _shape_outline(draw, box, opts, c, opts.stroke)
     bar_h = opts.font_size + 4
     draw.rectangle([box.x, box.y, box.x2, box.y + bar_h], fill=c)
     draw.text((box.x + 3, box.y + 2), _label_text(box, opts), fill="#000000", font=_font(opts.font_size))
@@ -166,7 +205,7 @@ def _r_label2(img, box, opts):
     h = tb[3] - tb[1] + 6
     draw.rectangle([box.x, box.y - h, box.x + w, box.y], fill=c)
     draw.text((box.x + 4, box.y - h + 2), text, fill="#000000", font=f)
-    draw.rectangle([box.x, box.y, box.x2, box.y2], outline=c, width=opts.stroke)
+    _shape_outline(draw, box, opts, c, opts.stroke)
 
 @register("Glow")
 def _r_glow(img, box, opts):
@@ -190,7 +229,7 @@ def _r_backdrop(img, box, opts):
     fill = tuple(int(c[i:i+2], 16) for i in (1, 3, 5)) + (80,)
     od.rectangle([box.x, box.y, box.x2, box.y2], fill=fill)
     img.paste(overlay, (0, 0), overlay)
-    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2], outline=c, width=opts.stroke)
+    _shape_outline(ImageDraw.Draw(img), box, opts, c, opts.stroke)
 
 def _region(img, box):
     x = max(0, box.x); y = max(0, box.y)
@@ -213,8 +252,7 @@ def _f_invert(img, box, opts):
 def _f_inv(img, box, opts):
     _f_invert(img, box, opts)
     box = _effective_box(box, opts)
-    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2],
-                                  outline=resolve_color(opts, box.label), width=opts.stroke)
+    _shape_outline(ImageDraw.Draw(img), box, opts, resolve_color(opts, box.label), opts.stroke)
 
 @register("Fusion")
 def _f_fusion(img, box, opts):
@@ -300,7 +338,7 @@ def _f_water(img, box, opts):
 def _f_mask(img, box, opts):
     box = _effective_box(box, opts)
     c = resolve_color(opts, box.label)
-    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2], fill=c)
+    _shape_fill(ImageDraw.Draw(img), box, opts, c)
 
 @register("CRT")
 def _f_crt(img, box, opts):
@@ -320,8 +358,7 @@ def _f_edge(img, box, opts):
 def _f_blink(img, box, opts):
     # static photo: render as a bright outline (no animation possible on one frame)
     box = _effective_box(box, opts)
-    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2],
-                                  outline=resolve_color(opts, box.label), width=opts.stroke + 1)
+    _shape_outline(ImageDraw.Draw(img), box, opts, resolve_color(opts, box.label), opts.stroke + 1)
 
 def apply_style(img, box: Box, opts: Opts) -> None:
     fn = RENDERERS.get(opts.style)
