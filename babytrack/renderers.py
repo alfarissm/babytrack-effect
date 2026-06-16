@@ -239,17 +239,33 @@ def _region(img, box):
     x2 = min(img.width, box.x2); y2 = min(img.height, box.y2)
     return (x, y, x2, y2)
 
-def _process_region(img, box, fn):
+def _shape_mask(size, box, bbox, shape):
+    from PIL import Image
+    mask = Image.new("L", size, 0)
+    md = ImageDraw.Draw(mask)
+    lb = Box(box.x - bbox[0], box.y - bbox[1], box.w, box.h, box.label, box.conf)
+    if shape == "ellipse":
+        md.ellipse([lb.x, lb.y, lb.x2, lb.y2], fill=255)
+    else:
+        md.polygon(_poly_points(lb, shape), fill=255)
+    return mask
+
+def _process_region(img, box, fn, opts=None):
     bbox = _region(img, box)
     if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
         return
     crop = img.crop(bbox)
-    img.paste(fn(crop), bbox)
+    processed = fn(crop)
+    shape = _resolve_shape(opts, box) if opts is not None else "rect"
+    if shape == "rect":
+        img.paste(processed, bbox)
+    else:
+        img.paste(processed, bbox, _shape_mask(crop.size, box, bbox, shape))
 
 @register("Invert")
 def _f_invert(img, box, opts):
     box = _effective_box(box, opts)
-    _process_region(img, box, lambda c: ImageOps.invert(c.convert("RGB")))
+    _process_region(img, box, lambda c: ImageOps.invert(c.convert("RGB")), opts)
 
 @register("Inv")
 def _f_inv(img, box, opts):
@@ -266,7 +282,7 @@ def _f_fusion(img, box, opts):
         from PIL import Image
         tint = Image.new("RGB", crop.size, rgb)
         return Image.blend(crop.convert("RGB"), tint, 0.4)
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Glitch")
 def _f_glitch(img, box, opts):
@@ -277,7 +293,7 @@ def _f_glitch(img, box, opts):
         r = ImageChops.offset(r, 4, 0)
         b = ImageChops.offset(b, -4, 0)
         return Image.merge("RGB", (r, g, b))
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Thermal")
 def _f_thermal(img, box, opts):
@@ -287,26 +303,26 @@ def _f_thermal(img, box, opts):
         for a, bb in [(0, 255), (0, 100), (255, 0)]:
             lut += [int(a + (bb - a) * i / 255) for i in range(256)]
         return g.convert("RGB").point(lut)
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Pixel")
 def _f_pixel(img, box, opts):
     def fn(crop):
         small = crop.resize((max(1, crop.width // 10), max(1, crop.height // 10)))
         return small.resize(crop.size, 0)  # NEAREST
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Tone")
 def _f_tone(img, box, opts):
-    _process_region(img, box, lambda c: ImageOps.posterize(c.convert("RGB"), 2))
+    _process_region(img, box, lambda c: ImageOps.posterize(c.convert("RGB"), 2), opts)
 
 @register("Blur")
 def _f_blur(img, box, opts):
-    _process_region(img, box, lambda c: c.filter(ImageFilter.GaussianBlur(6)))
+    _process_region(img, box, lambda c: c.filter(ImageFilter.GaussianBlur(6)), opts)
 
 @register("Dither")
 def _f_dither(img, box, opts):
-    _process_region(img, box, lambda c: c.convert("1").convert("RGB"))
+    _process_region(img, box, lambda c: c.convert("1").convert("RGB"), opts)
 
 @register("Zoom")
 def _f_zoom(img, box, opts):
@@ -315,14 +331,14 @@ def _f_zoom(img, box, opts):
         left = (big.width - crop.width) // 2
         top = (big.height - crop.height) // 2
         return big.crop((left, top, left + crop.width, top + crop.height))
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("X-Ray")
 def _f_xray(img, box, opts):
     def fn(crop):
         inv = ImageOps.invert(crop.convert("RGB"))
         return inv.filter(ImageFilter.EDGE_ENHANCE_MORE)
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Water")
 def _f_water(img, box, opts):
@@ -335,7 +351,7 @@ def _f_water(img, box, opts):
             out[y] = np.roll(arr[y], shift, axis=0)
         from PIL import Image
         return Image.fromarray(out)
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Mask")
 def _f_mask(img, box, opts):
@@ -351,11 +367,11 @@ def _f_crt(img, box, opts):
         for y in range(0, c.height, 3):
             d.line([0, y, c.width, y], fill=(0, 0, 0))
         return c
-    _process_region(img, box, fn)
+    _process_region(img, box, fn, opts)
 
 @register("Edge")
 def _f_edge(img, box, opts):
-    _process_region(img, box, lambda c: c.convert("RGB").filter(ImageFilter.FIND_EDGES))
+    _process_region(img, box, lambda c: c.convert("RGB").filter(ImageFilter.FIND_EDGES), opts)
 
 @register("Blink")
 def _f_blink(img, box, opts):

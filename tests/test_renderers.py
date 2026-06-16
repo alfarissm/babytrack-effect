@@ -61,6 +61,12 @@ def test_random_empty_pool_falls_back_to_all():
     s = _resolve_shape(Opts(box_shape="random", random_shapes=[]), Box(10, 10, 30, 30, "OBJ", 1.0))
     assert s in ["rect", "ellipse", "diamond", "hexagon", "triangle"]
 
+def test_filter_follows_ellipse_shape():
+    img = Image.new("RGB", (200, 200), (10, 120, 200))
+    apply_style(img, Box(40, 40, 80, 80, "OBJ", 0.9), Opts(style="Invert", box_shape="ellipse"))
+    assert img.getpixel((80, 80)) != (10, 120, 200)   # center inside ellipse: inverted
+    assert img.getpixel((42, 42)) == (10, 120, 200)    # corner outside ellipse: untouched
+
 def test_ellipse_differs_from_rect():
     rect = _blank(); ell = _blank()
     apply_style(rect, _box(), Opts(style="Basic", box_shape="rect", color="#ffffff", stroke=2))
