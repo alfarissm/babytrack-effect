@@ -31,3 +31,12 @@ def test_filter_changes_region_pixels():
     img = Image.new("RGB", (200, 200), (10, 120, 200))
     apply_style(img, Box(40, 40, 80, 80, "car", 0.8), Opts(style="Invert"))
     assert img.getpixel((80, 80)) != (10, 120, 200)
+
+import pytest
+from babytrack.options import ALL_STYLES
+
+@pytest.mark.parametrize("style", ALL_STYLES)
+def test_every_style_renders_without_crashing(style):
+    img = Image.new("RGB", (200, 200), (60, 60, 60))
+    apply_style(img, _box(), Opts(style=style))
+

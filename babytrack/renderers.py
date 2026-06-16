@@ -1,4 +1,5 @@
-from PIL import ImageDraw, ImageFont
+import numpy as np
+from PIL import ImageDraw, ImageFont, ImageOps, ImageFilter, ImageChops
 from babytrack.geometry import Box
 from babytrack.options import Opts
 from babytrack.colors import resolve_color
@@ -190,6 +191,137 @@ def _r_backdrop(img, box, opts):
     od.rectangle([box.x, box.y, box.x2, box.y2], fill=fill)
     img.paste(overlay, (0, 0), overlay)
     ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2], outline=c, width=opts.stroke)
+
+def _region(img, box):
+    x = max(0, box.x); y = max(0, box.y)
+    x2 = min(img.width, box.x2); y2 = min(img.height, box.y2)
+    return (x, y, x2, y2)
+
+def _process_region(img, box, fn):
+    bbox = _region(img, box)
+    if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return
+    crop = img.crop(bbox)
+    img.paste(fn(crop), bbox)
+
+@register("Invert")
+def _f_invert(img, box, opts):
+    box = _effective_box(box, opts)
+    _process_region(img, box, lambda c: ImageOps.invert(c.convert("RGB")))
+
+@register("Inv")
+def _f_inv(img, box, opts):
+    _f_invert(img, box, opts)
+    box = _effective_box(box, opts)
+    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2],
+                                  outline=resolve_color(opts, box.label), width=opts.stroke)
+
+@register("Fusion")
+def _f_fusion(img, box, opts):
+    box = _effective_box(box, opts)
+    c = resolve_color(opts, box.label)
+    rgb = tuple(int(c[i:i+2], 16) for i in (1, 3, 5))
+    def fn(crop):
+        from PIL import Image
+        tint = Image.new("RGB", crop.size, rgb)
+        return Image.blend(crop.convert("RGB"), tint, 0.4)
+    _process_region(img, box, fn)
+
+@register("Glitch")
+def _f_glitch(img, box, opts):
+    box = _effective_box(box, opts)
+    def fn(crop):
+        from PIL import Image
+        r, g, b = crop.convert("RGB").split()
+        r = ImageChops.offset(r, 4, 0)
+        b = ImageChops.offset(b, -4, 0)
+        return Image.merge("RGB", (r, g, b))
+    _process_region(img, box, fn)
+
+@register("Thermal")
+def _f_thermal(img, box, opts):
+    def fn(crop):
+        g = crop.convert("L")
+        lut = []
+        for a, bb in [(0, 255), (0, 100), (255, 0)]:
+            lut += [int(a + (bb - a) * i / 255) for i in range(256)]
+        return g.convert("RGB").point(lut)
+    _process_region(img, box, fn)
+
+@register("Pixel")
+def _f_pixel(img, box, opts):
+    def fn(crop):
+        small = crop.resize((max(1, crop.width // 10), max(1, crop.height // 10)))
+        return small.resize(crop.size, 0)  # NEAREST
+    _process_region(img, box, fn)
+
+@register("Tone")
+def _f_tone(img, box, opts):
+    _process_region(img, box, lambda c: ImageOps.posterize(c.convert("RGB"), 2))
+
+@register("Blur")
+def _f_blur(img, box, opts):
+    _process_region(img, box, lambda c: c.filter(ImageFilter.GaussianBlur(6)))
+
+@register("Dither")
+def _f_dither(img, box, opts):
+    _process_region(img, box, lambda c: c.convert("1").convert("RGB"))
+
+@register("Zoom")
+def _f_zoom(img, box, opts):
+    def fn(crop):
+        big = crop.resize((int(crop.width * 1.5), int(crop.height * 1.5)))
+        left = (big.width - crop.width) // 2
+        top = (big.height - crop.height) // 2
+        return big.crop((left, top, left + crop.width, top + crop.height))
+    _process_region(img, box, fn)
+
+@register("X-Ray")
+def _f_xray(img, box, opts):
+    def fn(crop):
+        inv = ImageOps.invert(crop.convert("RGB"))
+        return inv.filter(ImageFilter.EDGE_ENHANCE_MORE)
+    _process_region(img, box, fn)
+
+@register("Water")
+def _f_water(img, box, opts):
+    def fn(crop):
+        arr = np.asarray(crop.convert("RGB"))
+        h, w = arr.shape[:2]
+        out = np.zeros_like(arr)
+        for y in range(h):
+            shift = int(6 * np.sin(y / 8.0))
+            out[y] = np.roll(arr[y], shift, axis=0)
+        from PIL import Image
+        return Image.fromarray(out)
+    _process_region(img, box, fn)
+
+@register("Mask")
+def _f_mask(img, box, opts):
+    box = _effective_box(box, opts)
+    c = resolve_color(opts, box.label)
+    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2], fill=c)
+
+@register("CRT")
+def _f_crt(img, box, opts):
+    def fn(crop):
+        c = crop.convert("RGB").copy()
+        d = ImageDraw.Draw(c)
+        for y in range(0, c.height, 3):
+            d.line([0, y, c.width, y], fill=(0, 0, 0))
+        return c
+    _process_region(img, box, fn)
+
+@register("Edge")
+def _f_edge(img, box, opts):
+    _process_region(img, box, lambda c: c.convert("RGB").filter(ImageFilter.FIND_EDGES))
+
+@register("Blink")
+def _f_blink(img, box, opts):
+    # static photo: render as a bright outline (no animation possible on one frame)
+    box = _effective_box(box, opts)
+    ImageDraw.Draw(img).rectangle([box.x, box.y, box.x2, box.y2],
+                                  outline=resolve_color(opts, box.label), width=opts.stroke + 1)
 
 def apply_style(img, box: Box, opts: Opts) -> None:
     fn = RENDERERS.get(opts.style)
