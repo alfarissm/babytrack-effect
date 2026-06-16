@@ -23,6 +23,12 @@ no audio, no PRO/cloud features.
 
 Dependencies: `pip install ultralytics pillow numpy` (ultralytics pulls in torch).
 
+### Hardware
+
+Target machine: RTX 3050 (4GB VRAM), 16GB RAM. YOLOv8n needs <1GB VRAM and runs a single
+photo in <1s. GPU (CUDA torch) optional — speeds inference but unnecessary for one-shot
+photo use; CPU-only torch works fine. First torch install is large (~2.5GB for CUDA build).
+
 ## Data Flow
 
 ```
