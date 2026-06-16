@@ -72,7 +72,7 @@ class App:
         cb = ttk.Combobox(panel, textvariable=self.style_var, values=ALL_STYLES, state="readonly", width=14)
         cb.grid(row=r, column=1, sticky="ew"); cb.bind("<<ComboboxSelected>>", lambda e: self._set("style", self.style_var.get())); r += 1
 
-        r = self._scale(panel, r, "Stroke", "stroke", 1, 8)
+        r = self._scale(panel, r, "Stroke (thickness)", "stroke", 1, 30)
         r = self._scale(panel, r, "Font size", "font_size", 10, 28)
 
         self.same_var = tk.BooleanVar(value=self.opts.same_size)
