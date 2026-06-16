@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 STYLES_HUD = [
     "Basic", "Cross", "Label", "Frame", "L-Frame", "X-Frame", "Grid",
@@ -21,6 +21,8 @@ class Opts:
     # render params (changing these only re-composes)
     style: str = "Frame"
     box_shape: str = "rect"          # rect | ellipse | diamond | hexagon | triangle | random
+    # pool used when box_shape == "random" (mix only these)
+    random_shapes: list = field(default_factory=lambda: ["rect", "ellipse", "diamond", "hexagon", "triangle"])
     stroke: int = 2
     same_size: bool = False          # False: keep detection box size. True: force bounding_size
     color_mode: str = "single"       # single | random | by-label

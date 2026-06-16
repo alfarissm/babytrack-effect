@@ -26,8 +26,11 @@ _SHAPE_CHOICES = ["rect", "ellipse", "diamond", "hexagon", "triangle"]
 def _resolve_shape(opts: Opts, box: Box) -> str:
     shape = getattr(opts, "box_shape", "rect")
     if shape == "random":
+        pool = [s for s in getattr(opts, "random_shapes", None) or _SHAPE_CHOICES if s in _SHAPE_CHOICES]
+        if not pool:
+            pool = _SHAPE_CHOICES
         # deterministic per box position so redraws stay stable
-        return _SHAPE_CHOICES[(box.x * 31 + box.y * 17 + box.w) % len(_SHAPE_CHOICES)]
+        return pool[(box.x * 31 + box.y * 17 + box.w) % len(pool)]
     return shape
 
 def _poly_points(box: Box, shape: str):

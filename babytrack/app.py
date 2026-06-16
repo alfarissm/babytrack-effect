@@ -78,6 +78,17 @@ class App:
         cb7 = ttk.Combobox(panel, textvariable=self.shape_var, values=BOX_SHAPES, state="readonly", width=14)
         cb7.grid(row=r, column=1, sticky="ew"); cb7.bind("<<ComboboxSelected>>", lambda e: self._set("box_shape", self.shape_var.get())); r += 1
 
+        ttk.Label(panel, text="Random pool").grid(row=r, column=0, sticky="nw")
+        pool = ttk.Frame(panel)
+        pool.grid(row=r, column=1, sticky="w")
+        self.pool_vars = {}
+        for i, name in enumerate(["rect", "ellipse", "diamond", "hexagon", "triangle"]):
+            v = tk.BooleanVar(value=name in self.opts.random_shapes)
+            self.pool_vars[name] = v
+            ttk.Checkbutton(pool, text=name, variable=v,
+                            command=self._update_pool).grid(row=i // 2, column=i % 2, sticky="w")
+        r += 1
+
         r = self._scale(panel, r, "Stroke (thickness)", "stroke", 1, 30)
         r = self._scale(panel, r, "Font size", "font_size", 10, 28)
 
@@ -135,6 +146,10 @@ class App:
         s.set(getattr(self.opts, attr))
         s.grid(row=r, column=1, sticky="ew")
         return r + 1
+
+    def _update_pool(self):
+        self.opts.random_shapes = [n for n, v in self.pool_vars.items() if v.get()]
+        self.redraw()
 
     def _set(self, attr, value):
         setattr(self.opts, attr, value)

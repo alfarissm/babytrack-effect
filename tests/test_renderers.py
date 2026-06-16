@@ -46,6 +46,21 @@ def test_every_box_shape_renders(shape):
     apply_style(img, _box(), Opts(style="Basic", box_shape=shape, color="#ffffff"))
     assert img.getextrema() != ((0, 0), (0, 0), (0, 0))
 
+def test_random_uses_only_pool_shapes():
+    from babytrack.renderers import _resolve_shape
+    pool = ["ellipse", "triangle"]
+    seen = set()
+    for x in range(0, 200, 7):
+        for y in range(0, 200, 11):
+            seen.add(_resolve_shape(Opts(box_shape="random", random_shapes=pool), Box(x, y, 30, 30, "OBJ", 1.0)))
+    assert seen <= set(pool)
+    assert len(seen) >= 1
+
+def test_random_empty_pool_falls_back_to_all():
+    from babytrack.renderers import _resolve_shape
+    s = _resolve_shape(Opts(box_shape="random", random_shapes=[]), Box(10, 10, 30, 30, "OBJ", 1.0))
+    assert s in ["rect", "ellipse", "diamond", "hexagon", "triangle"]
+
 def test_ellipse_differs_from_rect():
     rect = _blank(); ell = _blank()
     apply_style(rect, _box(), Opts(style="Basic", box_shape="rect", color="#ffffff", stroke=2))
