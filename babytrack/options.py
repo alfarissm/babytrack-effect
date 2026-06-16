@@ -1,0 +1,32 @@
+from dataclasses import dataclass
+
+STYLES_HUD = [
+    "Basic", "Cross", "Label", "Frame", "L-Frame", "X-Frame", "Grid",
+    "Particle", "Dash", "Scope", "Win2K", "Label 2", "Glow", "Backdrop",
+]
+STYLES_FILTER = [
+    "Invert", "Fusion", "Inv", "Glitch", "Thermal", "Pixel", "Tone", "Blur",
+    "Dither", "Zoom", "X-Ray", "Water", "Mask", "CRT", "Edge", "Blink",
+]
+ALL_STYLES = STYLES_HUD + STYLES_FILTER
+
+@dataclass
+class Opts:
+    # detection params (changing these re-runs blob detection)
+    blob_mode: str = "count"         # count | size
+    blob_count: int = 128            # 16..512
+    bounding_size: int = 48          # box side for By Count
+    min_blob_size: int = 16          # min contour size for By Size
+    # render params (changing these only re-composes)
+    style: str = "Frame"
+    stroke: int = 2
+    same_size: bool = False          # False: keep detection box size. True: force bounding_size
+    color_mode: str = "single"       # single | random | by-label
+    color: str = "#00ff66"           # used when color_mode == single
+    label_mode: str = "generic"      # generic | random | custom
+    label_custom: str = "TARGET"
+    label_pos: str = "top"           # center | top | bottom
+    font_size: int = 14
+    show_score: bool = True
+
+DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size"}
