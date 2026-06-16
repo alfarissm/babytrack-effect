@@ -17,6 +17,7 @@ class Opts:
     blob_count: int = 128            # 16..512
     bounding_size: int = 48          # box side for By Count
     min_blob_size: int = 16          # min contour size for By Size
+    max_blob_pct: int = 50           # By Size: drop boxes wider/taller than this % of image
     # render params (changing these only re-composes)
     style: str = "Frame"
     stroke: int = 2
@@ -35,6 +36,6 @@ class Opts:
     # in-box region effect, applied under the outline style (independent of style)
     region_fill: str = "none"        # see REGION_FX names in region_fx.py
 
-DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size"}
+DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size", "max_blob_pct"}
 
 REGION_FILLS = ["none", "gradient", "invert", "darken", "brighten", "tint", "pixelate", "scanline"]

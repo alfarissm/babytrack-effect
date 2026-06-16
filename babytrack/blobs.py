@@ -21,13 +21,16 @@ def _detect_by_count(gray, opts: Opts) -> list[Box]:
     return boxes
 
 def _detect_by_size(gray, opts: Opts) -> list[Box]:
+    H, W = gray.shape[:2]
+    max_w = W * max(1, min(100, opts.max_blob_pct)) / 100.0
+    max_h = H * max(1, min(100, opts.max_blob_pct)) / 100.0
     edges = cv2.Canny(gray, 50, 150)
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     rects = []
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
-        if w >= opts.min_blob_size and h >= opts.min_blob_size:
+        if w >= opts.min_blob_size and h >= opts.min_blob_size and w <= max_w and h <= max_h:
             rects.append((w * h, x, y, w, h))
     rects.sort(reverse=True)
     rects = rects[: max(16, min(512, opts.blob_count))]

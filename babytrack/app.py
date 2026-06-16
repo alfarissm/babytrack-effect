@@ -66,6 +66,7 @@ class App:
         r = self._scale(panel, r, "Blob count", "blob_count", 16, 512)
         r = self._scale(panel, r, "Bound size", "bounding_size", 16, 256)
         r = self._scale(panel, r, "Min blob size", "min_blob_size", 4, 128)
+        r = self._scale(panel, r, "Max blob %", "max_blob_pct", 10, 100)
 
         ttk.Label(panel, text="Style").grid(row=r, column=0, sticky="w")
         self.style_var = tk.StringVar(value=self.opts.style)

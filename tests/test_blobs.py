@@ -24,6 +24,17 @@ def test_by_size_returns_contour_boxes():
     # contour boxes vary in extent, not all identical fixed size
     assert all(b.w >= 4 and b.h >= 4 for b in boxes)
 
+def test_by_size_drops_oversized_boxes():
+    # one giant bright bar (huge contour) + a few small squares
+    arr = np.zeros((200, 200, 3), dtype=np.uint8)
+    arr[10:25, 5:195] = 255          # very wide bar -> spans ~95% width
+    for (cx, cy) in [(40, 120), (90, 150), (150, 130)]:
+        arr[cy-4:cy+4, cx-4:cx+4] = 255
+    img = Image.fromarray(arr)
+    boxes = detect_blobs(img, Opts(blob_mode="size", min_blob_size=4, max_blob_pct=50, blob_count=50))
+    assert len(boxes) >= 1
+    assert all(b.w <= 100 for b in boxes)   # nothing wider than 50% of 200px
+
 def test_empty_image_returns_no_boxes():
     blank = Image.new("RGB", (100, 100), (0, 0, 0))
     boxes = detect_blobs(blank, Opts(blob_mode="count", blob_count=32))
