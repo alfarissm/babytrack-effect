@@ -31,3 +31,12 @@ def test_every_region_fill_runs():
     for name in REGION_FILLS:
         img = _img()
         apply_region_fx(img, _box(), Opts(region_fill=name, color="#3366ff"))
+
+def test_region_fill_follows_shape():
+    import numpy as np
+    base = np.random.default_rng(1).integers(0, 255, (200, 200, 3), dtype=np.uint8)
+    img = Image.fromarray(base.copy())
+    corner = img.getpixel((42, 42))
+    apply_region_fx(img, _box(), Opts(region_fill="invert", box_shape="ellipse"))
+    assert img.getpixel((42, 42)) == corner        # outside ellipse untouched
+    assert img.getpixel((80, 80)) != corner        # inside changed

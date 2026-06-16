@@ -1,4 +1,5 @@
 from PIL import Image, ImageOps, ImageEnhance, ImageDraw
+from babytrack.renderers import _resolve_shape, _shape_mask
 
 REGION_FX = {}
 
@@ -16,24 +17,31 @@ def _region(img, box):
     x2 = min(img.width, box.x2); y2 = min(img.height, box.y2)
     return (x, y, x2, y2)
 
-def _process(img, box, fn):
+def _paste_shaped(img, box, bbox, processed, opts):
+    shape = _resolve_shape(opts, box)
+    if shape == "rect":
+        img.paste(processed, bbox)
+    else:
+        img.paste(processed, bbox, _shape_mask(processed.size, box, bbox, shape))
+
+def _process(img, box, fn, opts):
     bbox = _region(img, box)
     if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
         return
     crop = img.crop(bbox).convert("RGB")
-    img.paste(fn(crop), bbox)
+    _paste_shaped(img, box, bbox, fn(crop), opts)
 
 @register("invert")
 def _invert(img, box, opts):
-    _process(img, box, lambda c: ImageOps.invert(c))
+    _process(img, box, lambda c: ImageOps.invert(c), opts)
 
 @register("darken")
 def _darken(img, box, opts):
-    _process(img, box, lambda c: ImageEnhance.Brightness(c).enhance(0.4))
+    _process(img, box, lambda c: ImageEnhance.Brightness(c).enhance(0.4), opts)
 
 @register("brighten")
 def _brighten(img, box, opts):
-    _process(img, box, lambda c: ImageEnhance.Brightness(c).enhance(1.7))
+    _process(img, box, lambda c: ImageEnhance.Brightness(c).enhance(1.7), opts)
 
 @register("tint")
 def _tint(img, box, opts):
@@ -41,14 +49,14 @@ def _tint(img, box, opts):
     def fn(c):
         tint = Image.new("RGB", c.size, rgb)
         return Image.blend(c, tint, 0.5)
-    _process(img, box, fn)
+    _process(img, box, fn, opts)
 
 @register("pixelate")
 def _pixelate(img, box, opts):
     def fn(c):
         small = c.resize((max(1, c.width // 12), max(1, c.height // 12)))
         return small.resize(c.size, Image.NEAREST)
-    _process(img, box, fn)
+    _process(img, box, fn, opts)
 
 @register("scanline")
 def _scanline(img, box, opts):
@@ -58,7 +66,7 @@ def _scanline(img, box, opts):
         for y in range(0, out.height, 3):
             d.line([0, y, out.width, y], fill=(0, 0, 0))
         return out
-    _process(img, box, fn)
+    _process(img, box, fn, opts)
 
 @register("gradient")
 def _gradient(img, box, opts):
@@ -77,7 +85,7 @@ def _gradient(img, box, opts):
             px[xx, yy] = (rgb[0], rgb[1], rgb[2], a)
     base = img.crop(bbox).convert("RGBA")
     base.alpha_composite(grad)
-    img.paste(base.convert("RGB"), bbox)
+    _paste_shaped(img, box, bbox, base.convert("RGB"), opts)
 
 def apply_region_fx(img, box, opts) -> None:
     fn = REGION_FX.get(opts.region_fill)
