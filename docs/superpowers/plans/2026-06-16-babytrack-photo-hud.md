@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A Tkinter desktop app that loads one photo, runs YOLO object detection, and overlays configurable BabyTrack-style tracking HUD/filter effects on each detected object, viewable on screen and savable as PNG.
+**Goal:** A Tkinter desktop app that loads one photo, finds many visual blobs (OpenCV feature/contour regions, count 16–512), and overlays configurable BabyTrack-style tracking HUD/filter effects on each blob, viewable on screen and savable as PNG.
 
-**Architecture:** Pure logic (detection wrapper, geometry, color, renderers, compositor, export) lives in small testable modules under `babytrack/`. The Tkinter GUI (`app.py`) is a thin shell that binds widgets to an `Opts` dataclass and calls the compositor. Detection runs on a background thread. Renderers are small functions keyed by style name in a registry, so the settings panel just lists registry keys.
+**Architecture:** Pure logic (blob detector, geometry, color, renderers, compositor, export) lives in small testable modules under `babytrack/`. The Tkinter GUI (`app.py`) is a thin shell that binds widgets to an `Opts` dataclass, runs OpenCV blob detection, and calls the compositor. Detection is pure CPU OpenCV (fast, no model), re-run only when a detection param changes. Renderers are small functions keyed by style name in a registry, so the settings panel just lists registry keys.
 
-**Tech Stack:** Python 3.13, Tkinter (stdlib), Ultralytics YOLO (`yolov8n.pt`), Pillow, NumPy, pytest.
+**Tech Stack:** Python 3.13, Tkinter (stdlib), OpenCV (`opencv-python`), Pillow, NumPy, pytest. No YOLO/torch — detection is OpenCV feature/contour blobs with user-controlled count (16–512), mirroring BabyTrack.
 
 > **Note on file structure:** The spec proposed a single `babytrack.py`. This plan splits into focused modules instead — 30 renderers plus GUI is too large for one file to test or hold in context. Same app, better boundaries.
 
@@ -22,7 +22,7 @@ babytrack-hud/
     geometry.py      # Box dataclass
     options.py       # Opts dataclass (all settings + defaults)
     colors.py        # resolve_color() for single/random/by-label modes
-    detector.py      # YOLO wrapper -> list[Box]
+    blobs.py         # detect_blobs(image, opts) -> list[Box]  (OpenCV)
     renderers.py     # registry of HUD + filter render functions
     compositor.py    # compose(original, boxes, opts) -> PIL.Image
     export.py        # save_png(image, path)
@@ -30,7 +30,7 @@ babytrack-hud/
   tests/
     test_geometry.py
     test_colors.py
-    test_detector.py
+    test_blobs.py
     test_renderers.py
     test_compositor.py
     test_export.py
@@ -50,7 +50,7 @@ babytrack-hud/
 - [ ] **Step 1: Create requirements.txt**
 
 ```
-ultralytics>=8.3
+opencv-python>=4.9
 pillow>=10.0
 numpy>=1.26
 pytest>=8.0
@@ -81,7 +81,7 @@ Run:
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt
 ```
-Expected: installs succeed (torch download is large, ~2.5GB CUDA build; first time only).
+Expected: installs succeed (opencv-python ~40MB; no torch, no model download).
 
 - [ ] **Step 5: Commit**
 
@@ -188,17 +188,24 @@ ALL_STYLES = STYLES_HUD + STYLES_FILTER
 
 @dataclass
 class Opts:
+    # detection params (changing these re-runs blob detection)
+    blob_mode: str = "count"         # count | size
+    blob_count: int = 128            # 16..512
+    bounding_size: int = 48          # box side for By Count
+    min_blob_size: int = 16          # min contour size for By Size
+    # render params (changing these only re-composes)
     style: str = "Frame"
     stroke: int = 2
-    same_size: bool = False          # True -> force every box to bounding_size
-    bounding_size: int = 128
+    same_size: bool = False          # False: keep detection box size (By Count=fixed, By Size=contour). True: force bounding_size
     color_mode: str = "single"       # single | random | by-label
     color: str = "#00ff66"           # used when color_mode == single
-    label_mode: str = "real"         # real | random | custom
+    label_mode: str = "generic"      # generic | random | custom
     label_custom: str = "TARGET"
     label_pos: str = "top"           # center | top | bottom
     font_size: int = 14
     show_score: bool = True
+
+DETECTION_PARAMS = {"blob_mode", "blob_count", "bounding_size", "min_blob_size"}
 ```
 
 - [ ] **Step 2: Sanity import check**
@@ -280,91 +287,114 @@ git commit -m "feat: add color resolution by mode"
 
 ---
 
-## Task 5: Detector (mocked test)
+## Task 5: Blob detector (OpenCV)
 
 **Files:**
-- Create: `babytrack/detector.py`
-- Test: `tests/test_detector.py`
+- Create: `babytrack/blobs.py`
+- Test: `tests/test_blobs.py`
 
-Detector wraps Ultralytics. We do NOT load the real model in tests — we test the
-result-parsing function `boxes_from_result` with a fake result object.
+`detect_blobs(pil_image, opts)` returns `list[Box]`. Two modes mirror the website:
+**By Count** (Shi-Tomasi corners → N fixed-size boxes) and **By Size** (Canny → contours →
+boxes by extent). Tests use a synthetic image with known high-contrast features.
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-from babytrack.detector import boxes_from_result
+import numpy as np
+from PIL import Image
+from babytrack.blobs import detect_blobs
+from babytrack.options import Opts
 
-class _FakeBoxes:
-    # mimic ultralytics result.boxes iteration
-    def __init__(self, rows):
-        self._rows = rows
-    def __iter__(self):
-        return iter(self._rows)
+def _dotted_image():
+    # black image with several bright squares => strong corner features
+    arr = np.zeros((200, 200, 3), dtype=np.uint8)
+    for (cx, cy) in [(30, 30), (80, 50), (150, 60), (40, 150), (160, 160)]:
+        arr[cy-5:cy+5, cx-5:cx+5] = 255
+    return Image.fromarray(arr)
 
-class _FakeRow:
-    def __init__(self, xyxy, cls, conf):
-        self.xyxy = [xyxy]      # tensor-like: indexable
-        self.cls = [cls]
-        self.conf = [conf]
+def test_by_count_respects_max_and_box_size():
+    img = _dotted_image()
+    boxes = detect_blobs(img, Opts(blob_mode="count", blob_count=16, bounding_size=20))
+    assert 1 <= len(boxes) <= 16
+    assert all(b.w == 20 and b.h == 20 for b in boxes)
+    assert all(0.0 <= b.conf <= 1.0 for b in boxes)
 
-class _FakeResult:
-    def __init__(self, rows, names):
-        self.boxes = _FakeBoxes(rows)
-        self.names = names
+def test_by_size_returns_contour_boxes():
+    img = _dotted_image()
+    boxes = detect_blobs(img, Opts(blob_mode="size", min_blob_size=4, blob_count=50))
+    assert len(boxes) >= 1
+    # contour boxes vary in extent, not all identical fixed size
+    assert all(b.w >= 4 and b.h >= 4 for b in boxes)
 
-def test_boxes_from_result_parses_xywh_label():
-    rows = [_FakeRow([10.0, 20.0, 110.0, 70.0], 0.0, 0.95)]
-    res = _FakeResult(rows, {0: "person"})
-    boxes = boxes_from_result(res)
-    assert len(boxes) == 1
-    b = boxes[0]
-    assert (b.x, b.y, b.w, b.h) == (10, 20, 100, 50)
-    assert b.label == "person"
-    assert round(b.conf, 2) == 0.95
+def test_empty_image_returns_no_boxes():
+    blank = Image.new("RGB", (100, 100), (0, 0, 0))
+    boxes = detect_blobs(blank, Opts(blob_mode="count", blob_count=32))
+    assert boxes == []
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv/Scripts/python -m pytest tests/test_detector.py -v`
-Expected: FAIL with `ModuleNotFoundError: babytrack.detector`
+Run: `.venv/Scripts/python -m pytest tests/test_blobs.py -v`
+Expected: FAIL with `ModuleNotFoundError: babytrack.blobs`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-from functools import lru_cache
+import cv2
+import numpy as np
 from babytrack.geometry import Box
+from babytrack.options import Opts
 
-def boxes_from_result(result) -> list[Box]:
+def _gray(pil_image):
+    arr = np.asarray(pil_image.convert("RGB"))
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+
+def _detect_by_count(gray, opts: Opts) -> list[Box]:
+    n = max(16, min(512, opts.blob_count))
+    pts = cv2.goodFeaturesToTrack(gray, maxCorners=n, qualityLevel=0.01, minDistance=8)
+    if pts is None:
+        return []
+    size = max(4, opts.bounding_size)
+    half = size // 2
     boxes = []
-    for row in result.boxes:
-        x1, y1, x2, y2 = (float(v) for v in row.xyxy[0])
-        cls_id = int(row.cls[0])
-        conf = float(row.conf[0])
-        label = result.names.get(cls_id, str(cls_id)) if hasattr(result.names, "get") else result.names[cls_id]
-        boxes.append(Box(int(x1), int(y1), int(x2 - x1), int(y2 - y1), label, conf))
+    for i, p in enumerate(pts):
+        px, py = p.ravel()
+        boxes.append(Box(int(px) - half, int(py) - half, size, size, "OBJ", 1.0))
     return boxes
 
-@lru_cache(maxsize=1)
-def _load_model():
-    from ultralytics import YOLO
-    return YOLO("yolov8n.pt")
+def _detect_by_size(gray, opts: Opts) -> list[Box]:
+    edges = cv2.Canny(gray, 50, 150)
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    rects = []
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if w >= opts.min_blob_size and h >= opts.min_blob_size:
+            rects.append((w * h, x, y, w, h))
+    rects.sort(reverse=True)
+    rects = rects[: max(16, min(512, opts.blob_count))]
+    if not rects:
+        return []
+    max_area = rects[0][0] or 1
+    return [Box(x, y, w, h, "OBJ", round(area / max_area, 3)) for area, x, y, w, h in rects]
 
-def detect(pil_image) -> list[Box]:
-    model = _load_model()
-    results = model(pil_image, verbose=False)
-    return boxes_from_result(results[0])
+def detect_blobs(pil_image, opts: Opts) -> list[Box]:
+    gray = _gray(pil_image)
+    if opts.blob_mode == "size":
+        return _detect_by_size(gray, opts)
+    return _detect_by_count(gray, opts)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv/Scripts/python -m pytest tests/test_detector.py -v`
-Expected: PASS (1 passed)
+Run: `.venv/Scripts/python -m pytest tests/test_blobs.py -v`
+Expected: PASS (3 passed)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add babytrack/detector.py tests/test_detector.py
-git commit -m "feat: add YOLO detector with parse split out for testing"
+git add babytrack/blobs.py tests/test_blobs.py
+git commit -m "feat: add OpenCV blob detector (by-count and by-size)"
 ```
 
 ---
@@ -942,18 +972,18 @@ git commit -m "feat: add PNG export"
 - Create: `babytrack/app.py`
 
 GUI is manually tested (no automated UI test). It binds widgets to an `Opts` instance,
-loads a photo, runs detection on a thread, and redraws the canvas on any change.
+loads a photo, runs OpenCV blob detection (cheap, synchronous), and redraws the canvas.
+Detection params (blob mode/count/size) re-detect; render params only recompose.
 
 - [ ] **Step 1: Write the app**
 
 ```python
-import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, colorchooser, messagebox
 from PIL import Image, ImageTk
 
-from babytrack.options import Opts, ALL_STYLES
-from babytrack.detector import detect
+from babytrack.options import Opts, ALL_STYLES, DETECTION_PARAMS
+from babytrack.blobs import detect_blobs
 from babytrack.compositor import compose
 from babytrack.export import save_png
 
@@ -970,7 +1000,7 @@ class App:
 
     def _build_layout(self):
         self.canvas = tk.Canvas(self.root, width=720, height=540, bg="#111")
-        self.canvas.grid(row=0, column=0, rowspan=20, padx=8, pady=8)
+        self.canvas.grid(row=0, column=0, rowspan=24, padx=8, pady=8)
 
         panel = ttk.Frame(self.root)
         panel.grid(row=0, column=1, sticky="n", padx=8, pady=8)
@@ -982,17 +1012,25 @@ class App:
         self.status = ttk.Label(panel, text="open a photo to start")
         self.status.grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
 
+        ttk.Label(panel, text="Blob mode").grid(row=r, column=0, sticky="w")
+        self.bmode_var = tk.StringVar(value=self.opts.blob_mode)
+        cb0 = ttk.Combobox(panel, textvariable=self.bmode_var, values=["count", "size"], state="readonly", width=14)
+        cb0.grid(row=r, column=1, sticky="ew"); cb0.bind("<<ComboboxSelected>>", lambda e: self._set("blob_mode", self.bmode_var.get())); r += 1
+
+        r = self._scale(panel, r, "Blob count", "blob_count", 16, 512)
+        r = self._scale(panel, r, "Bound size", "bounding_size", 16, 256)
+        r = self._scale(panel, r, "Min blob size", "min_blob_size", 4, 128)
+
         ttk.Label(panel, text="Style").grid(row=r, column=0, sticky="w")
         self.style_var = tk.StringVar(value=self.opts.style)
         cb = ttk.Combobox(panel, textvariable=self.style_var, values=ALL_STYLES, state="readonly", width=14)
         cb.grid(row=r, column=1, sticky="ew"); cb.bind("<<ComboboxSelected>>", lambda e: self._set("style", self.style_var.get())); r += 1
 
         r = self._scale(panel, r, "Stroke", "stroke", 1, 8)
-        r = self._scale(panel, r, "Bound size", "bounding_size", 32, 512)
         r = self._scale(panel, r, "Font size", "font_size", 10, 28)
 
         self.same_var = tk.BooleanVar(value=self.opts.same_size)
-        ttk.Checkbutton(panel, text="Same size", variable=self.same_var,
+        ttk.Checkbutton(panel, text="Force same size", variable=self.same_var,
                         command=lambda: self._set("same_size", self.same_var.get())).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
 
         self.score_var = tk.BooleanVar(value=self.opts.show_score)
@@ -1008,7 +1046,7 @@ class App:
 
         ttk.Label(panel, text="Label mode").grid(row=r, column=0, sticky="w")
         self.lmode_var = tk.StringVar(value=self.opts.label_mode)
-        cb3 = ttk.Combobox(panel, textvariable=self.lmode_var, values=["real", "random", "custom"], state="readonly", width=14)
+        cb3 = ttk.Combobox(panel, textvariable=self.lmode_var, values=["generic", "random", "custom"], state="readonly", width=14)
         cb3.grid(row=r, column=1, sticky="ew"); cb3.bind("<<ComboboxSelected>>", lambda e: self._set("label_mode", self.lmode_var.get())); r += 1
 
         ttk.Label(panel, text="Custom label").grid(row=r, column=0, sticky="w")
@@ -1023,15 +1061,17 @@ class App:
 
     def _scale(self, panel, r, text, attr, lo, hi):
         ttk.Label(panel, text=text).grid(row=r, column=0, sticky="w")
-        var = tk.IntVar(value=getattr(self.opts, attr))
-        s = ttk.Scale(panel, from_=lo, to=hi, command=lambda v, a=attr, vv=var: self._set(a, int(float(v))))
+        s = ttk.Scale(panel, from_=lo, to=hi, command=lambda v, a=attr: self._set(a, int(float(v))))
         s.set(getattr(self.opts, attr))
         s.grid(row=r, column=1, sticky="ew")
         return r + 1
 
     def _set(self, attr, value):
         setattr(self.opts, attr, value)
-        self.redraw()
+        if attr in DETECTION_PARAMS:
+            self.detect()
+        else:
+            self.redraw()
 
     def open_photo(self):
         path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.webp")])
@@ -1042,24 +1082,21 @@ class App:
         except Exception as ex:
             messagebox.showwarning("Bad file", f"Not an image: {ex}")
             return
-        self.boxes = []
-        self.status.config(text="loading YOLO / detecting…")
-        threading.Thread(target=self._detect_thread, daemon=True).start()
+        self.detect()
 
-    def _detect_thread(self):
-        try:
-            boxes = detect(self.original)
-        except Exception as ex:
-            self.root.after(0, lambda: self.status.config(text=f"detect error: {ex}"))
+    def detect(self):
+        if self.original is None:
             return
-        def done():
-            self.boxes = boxes
-            if boxes:
-                self.status.config(text=f"{len(boxes)} object(s) detected")
-            else:
-                self.status.config(text="no objects detected, try another photo")
-            self.redraw()
-        self.root.after(0, done)
+        try:
+            self.boxes = detect_blobs(self.original, self.opts)
+        except Exception as ex:
+            self.status.config(text=f"detect error: {ex}")
+            return
+        if self.boxes:
+            self.status.config(text=f"{len(self.boxes)} blob(s)")
+        else:
+            self.status.config(text="no blobs — lower min size / raise count")
+        self.redraw()
 
     def redraw(self):
         if self.original is None:
@@ -1100,13 +1137,15 @@ def main():
 Run: `.venv/Scripts/python main.py`
 Expected: window opens with a dark canvas and a settings panel. No crash.
 
-- [ ] **Step 3: Manual test — detect + style switching**
+- [ ] **Step 3: Manual test — detect + blob count + style switching**
 
-1. Click "Open Photo", choose a JPG with people/objects.
-2. Status shows "loading YOLO / detecting…" then "N object(s) detected".
-3. Boxes appear. Change Style combobox through several values — overlay updates each time.
-4. Change Stroke/Bound size/Color — overlay updates.
-5. Click "Save PNG", choose a path → file is written and opens correctly.
+1. Click "Open Photo", choose any detailed JPG.
+2. Status shows "N blob(s)"; many tracking boxes scatter across features.
+3. Drag "Blob count" up/down — number of boxes changes (16–512).
+4. Switch "Blob mode" Count↔Size — placement/sizing changes.
+5. Change Style through several values — overlay updates each time (no re-detect).
+6. Change Stroke/Color — overlay updates.
+7. Click "Save PNG", choose a path → file is written and opens correctly.
 
 - [ ] **Step 4: Commit**
 
@@ -1132,8 +1171,9 @@ Expected: all tests pass.
 ```markdown
 # BabyTrack Photo HUD
 
-Tkinter desktop app: load one photo, detect objects with YOLO, overlay
-configurable tracking HUD/filter effects (30 styles), save as PNG.
+Tkinter desktop app: load one photo, find many visual blobs with OpenCV
+(feature/contour regions, count 16–512), overlay configurable tracking
+HUD/filter effects (30 styles), save as PNG. No YOLO, no model download.
 
 ## Setup
     python -m venv .venv
@@ -1145,7 +1185,7 @@ configurable tracking HUD/filter effects (30 styles), save as PNG.
 ## Test
     .venv/Scripts/python -m pytest -v
 
-First run downloads yolov8n.pt (~6MB). GPU optional (CPU works fine for one photo).
+Pure CPU OpenCV — runs instantly, GPU unused.
 ```
 
 - [ ] **Step 3: Commit**
@@ -1159,7 +1199,7 @@ git commit -m "docs: add README"
 
 ## Self-Review Notes
 
-- **Spec coverage:** loader (Task 10 open_photo), detector (Task 5), all 30 styles (Tasks 6–7), settings panel (Task 10), compositor (Task 8), exporter (Task 9), error handling (Task 10 messagebox + status), threading (Task 10). All covered.
-- **Type consistency:** `Box(x,y,w,h,label,conf)`, `apply_style(img, box, opts)`, `compose(original, boxes, opts)`, `save_png(image, path)`, `resolve_color(opts, label)` used consistently across tasks.
-- **Out of scope honored:** no video/camera/mp4/audio/PRO.
+- **Spec coverage:** loader (Task 10 open_photo), blob detector by-count & by-size (Task 5), blob-count control (Task 10 scale + DETECTION_PARAMS re-detect), all 30 styles (Tasks 6–7), settings panel (Task 10), compositor (Task 8), exporter (Task 9), error handling (Task 10 messagebox + status). All covered.
+- **Type consistency:** `Box(x,y,w,h,label,conf)`, `detect_blobs(pil_image, opts)`, `apply_style(img, box, opts)`, `compose(original, boxes, opts)`, `save_png(image, path)`, `resolve_color(opts, label)`, `DETECTION_PARAMS` used consistently across tasks.
+- **Out of scope honored:** no video/camera/mp4/audio/PRO/YOLO.
 ```
