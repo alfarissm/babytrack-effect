@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 *.png
 !docs/**/*.png
+CLAUDE.md
