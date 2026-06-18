@@ -5,3 +5,4 @@ __pycache__/
 *.png
 !docs/**/*.png
 CLAUDE.md
+docs/superpowers/
