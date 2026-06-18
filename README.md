@@ -13,7 +13,7 @@ A desktop app that turns a single photo into a sci-fi "tracking HUD" scene. It f
 visual blobs in the image and overlays tracking boxes, labels, and connection lines on
 them. Tune the count, shape, style, color, and effects, then export a full-resolution PNG.
 
-![preview](docs/img/preview.png)
+![preview](docs/img/new.png)
 
 ## What it does
 
